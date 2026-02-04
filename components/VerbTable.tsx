@@ -1,140 +1,109 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Person, Tense, VerbData, Mood } from '../types.ts';
 
-interface VerbTableProps {
-  verb: VerbData;
-}
+const VerbTable: React.FC<{ verb: VerbData }> = ({ verb }) => {
+  // Lista de terminaciones gramaticales en orden de longitud (más largas primero)
+  const endings = [
+    'áramos', 'éramos', 'íramos', 'ásemos', 'ésemos', 'ísemos',
+    'aríamos', 'eríamos', 'iríamos', 'aríais', 'eríais', 'iríais',
+    'aremos', 'eremos', 'iremos', 'aréis', 'eréis', 'iréis',
+    'áramos', 'éramos', 'íramos', 'arais', 'erais', 'irais', 
+    'aseis', 'eseis', 'iseis', 'ábamos', 'abais', 'íamos', 'íais',
+    'asteis', 'isteis', 'aron', 'ieron', 'amos', 'áis', 'emos', 'éis', 'imos',
+    'ará', 'erá', 'irá', 'aré', 'eré', 'iré', 'ara', 'era', 'ira', 'ase', 'ese', 'ise',
+    'aba', 'ías', 'ía', 'as', 'es', 'an', 'en', 'és', 'aste', 'iste', 'ió', 'í', 'ó', 'é',
+    'a', 'e', 'o', 's'
+  ];
 
-const VerbTable: React.FC<VerbTableProps> = ({ verb }) => {
-  const [activeMood, setActiveMood] = useState<Mood>(Mood.INDICATIVO);
-  const [activeTense, setActiveTense] = useState<Tense | null>(null);
+  const processText = (word: string) => {
+    if (!word) return '';
 
-  const tensesInMood = Object.keys(verb.conjugations[activeMood]) as Tense[];
-  
-  React.useEffect(() => {
-    if (!activeTense || !verb.conjugations[activeMood][activeTense]) {
-      setActiveTense(tensesInMood[0]);
-    }
-  }, [activeMood, verb]);
+    // Función interna para aplicar el rojo a la terminación
+    const applyHighlight = (text: string) => {
+      for (const end of endings) {
+        if (text.endsWith(end)) {
+          const root = text.substring(0, text.length - end.length);
+          return `${root}<span class="text-red-500 font-bold">${end}</span>`;
+        }
+      }
+      // Si no hay coincidencia clara, resaltamos la palabra completa como terminación (ej: "he", "ha")
+      return `<span class="text-red-500 font-bold">${text}</span>`;
+    };
 
-  const highlightEnding = (word: string) => {
-    const endings = [
-      'o', 'as', 'a', 'amos', 'áis', 'an', 
-      'es', 'e', 'emos', 'éis', 'en',
-      'aba', 'abas', 'ábamos', 'abais', 'aban',
-      'ía', 'ías', 'íamos', 'íais', 'ían',
-      'é', 'aste', 'ó', 'asteis', 'aron',
-      'í', 'iste', 'ió', 'isteis', 'ieron',
-      'aré', 'arás', 'ará', 'aremos', 'aréis', 'arán',
-      'ara', 'aras', 'áramos', 'arais', 'aran',
-      'ase', 'ases', 'ásemos', 'aseis', 'asen',
-      'ado', 'ido',
-      'he', 'has', 'ha', 'hemos', 'habéis', 'han',
-      'había', 'habías', 'habíamos', 'habíais', 'habían',
-      'hube', 'hubiste', 'hubo', 'hubimos', 'hubisteis', 'hubieron',
-      'habré', 'habrás', 'habrá', 'habremos', 'habréis', 'habrán',
-      'habría', 'habrías', 'habríamos', 'habríais', 'habrían',
-      'haya', 'hayas', 'hayamos', 'hayáis', 'hayan',
-      'hubiera', 'hubieras', 'hubiéramos', 'hubierais', 'hubieran',
-      'hubiese', 'hubieses', 'hubiésemos', 'hubieseis', 'hubiesen'
-    ].sort((a, b) => b.length - a.length);
-
+    // Si es una forma compuesta (ej: "he cantado", "hubiera vivido")
     if (word.includes(' ')) {
       const parts = word.split(' ');
+      const auxiliary = parts[0];
+      const participle = parts.slice(1).join(' ');
+      
+      const highlightedAux = applyHighlight(auxiliary);
+      
+      // Retornamos el auxiliar con su terminación en rojo y el participio normal
       return (
-        <span className="text-2xl md:text-4xl">
-          <span className="text-red-500 font-black">{parts[0]}</span>{' '}
-          {parts[1].slice(0, -3)}<span className="text-red-500 font-black">{parts[1].slice(-3)}</span>
-        </span>
+        <span dangerouslySetInnerHTML={{ 
+          __html: `${highlightedAux} ${participle}` 
+        }} />
       );
     }
 
-    for (const end of endings) {
-      if (word.endsWith(end)) {
-        const root = word.slice(0, -end.length);
-        return (
-          <span className="text-2xl md:text-4xl">
-            {root}<span className="text-red-500 font-black">{end}</span>
-          </span>
-        );
-      }
-    }
-    return <span className="text-2xl md:text-4xl">{word}</span>;
+    // Si es una forma simple
+    return (
+      <span dangerouslySetInnerHTML={{ 
+        __html: applyHighlight(word) 
+      }} />
+    );
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex bg-slate-200 p-1.5 rounded-2xl w-full max-w-lg mx-auto shadow-inner">
-        {Object.values(Mood).map((m) => (
-          <button
-            key={m}
-            onClick={() => setActiveMood(m)}
-            className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
-              activeMood === m 
-                ? 'bg-white text-indigo-600 shadow-md transform scale-105' 
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {m.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-4 space-y-2 max-h-[600px] overflow-y-auto pr-2 no-scrollbar">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">Selecciona un tiempo verbal</p>
-          <div className="flex flex-col gap-2">
-            {tensesInMood.map((t) => (
-              <button
-                key={t}
-                onClick={() => setActiveTense(t)}
-                className={`text-left px-5 py-4 rounded-2xl border-2 transition-all group ${
-                  activeTense === t 
-                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm' 
-                    : 'border-white bg-white hover:border-slate-200 text-slate-600'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`font-bold text-sm ${activeTense === t ? 'scale-105 origin-left' : ''}`}>{t}</span>
-                  <i className={`fas fa-chevron-right text-[10px] transition-transform ${activeTense === t ? 'translate-x-1' : 'opacity-0'}`}></i>
+    <div className="space-y-12 animate-in fade-in duration-500 pb-10">
+      {[Mood.INDICATIVO, Mood.SUBJUNTIVO].map(mood => (
+        <div key={mood} className="bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl overflow-hidden">
+          <div className={`${mood === Mood.INDICATIVO ? 'bg-blue-600' : 'bg-indigo-700'} p-8 text-white sticky left-0`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] opacity-70 mb-1">Modo Verbal</h3>
+                <h2 className="text-3xl font-lexend font-black tracking-tight">{mood.toUpperCase()}</h2>
+              </div>
+              <div className="hidden md:flex items-center space-x-2 bg-white/10 px-4 py-2 rounded-full text-[10px] font-bold">
+                <i className="fas fa-arrows-left-right animate-pulse"></i>
+                <span>DESLIZA PARA VER MÁS TIEMPOS</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="p-4 md:p-8 flex gap-6 overflow-x-auto no-scrollbar scroll-smooth">
+            {Object.entries(verb.conjugations[mood] || {}).map(([tense, persons]) => (
+              <div key={tense} className="flex-shrink-0 w-72 bg-slate-50 p-6 rounded-[2rem] border border-slate-100 hover:border-indigo-200 transition-colors shadow-sm">
+                <div className="h-14 mb-4 border-b border-indigo-100 flex items-center">
+                  <h4 className="text-[11px] font-black text-indigo-700 uppercase tracking-wider leading-tight">{tense}</h4>
                 </div>
-              </button>
+                <div className="space-y-4">
+                  {Object.values(Person).map(p => {
+                    const form = (persons as any)[p];
+                    return form ? (
+                      <div key={p} className="flex items-center justify-between group">
+                        <span className="text-[10px] text-slate-400 font-black uppercase w-12 flex-shrink-0">{p}</span>
+                        <span className="text-sm text-slate-700 text-right">{processText(form)}</span>
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              </div>
             ))}
           </div>
         </div>
-
-        <div className="lg:col-span-8">
-          {activeTense && (
-            <div className="bg-white rounded-[2rem] border-2 border-indigo-100 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-              <div className="bg-indigo-600 p-8 text-white text-center relative">
-                <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-                  <i className="fas fa-spell-check text-[15rem] -mt-10 -ml-10"></i>
-                </div>
-                <h3 className="text-xs font-black uppercase tracking-[0.3em] opacity-70 mb-2">{activeMood}</h3>
-                <h2 className="text-3xl font-black">{activeTense}</h2>
-              </div>
-              
-              <div className="p-8 md:p-12 space-y-6 bg-gradient-to-b from-indigo-50/20 to-white">
-                {Object.values(Person).map((p) => (
-                  <div key={p} className="flex flex-col md:flex-row md:items-center border-b border-slate-100 last:border-0 pb-5 last:pb-0">
-                    <span className="text-slate-400 font-bold uppercase text-[11px] md:w-40 mb-1 md:mb-0 tracking-[0.2em]">{p}</span>
-                    <span className="text-slate-900 font-medium font-serif">
-                      {verb.conjugations[activeMood][activeTense] ? 
-                        highlightEnding(verb.conjugations[activeMood][activeTense]![p]) : 
-                        '---'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="p-6 bg-slate-50 border-t text-center">
-                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.4em]">
-                  Modelo del Verbo <span className="text-indigo-600">{verb.infinitive}</span>
-                </p>
-              </div>
-            </div>
-          )}
+      ))}
+      
+      <div className="bg-amber-50 rounded-3xl p-8 border border-amber-100 flex items-start space-x-4">
+        <div className="bg-white p-3 rounded-2xl text-amber-600 shadow-sm flex-shrink-0">
+          <i className="fas fa-lightbulb text-xl"></i>
+        </div>
+        <div>
+          <h4 className="font-lexend font-bold text-amber-900 mb-1 text-sm">Ayuda para el estudio:</h4>
+          <p className="text-amber-800/80 text-xs leading-relaxed">
+            Fíjate en las letras <span className="text-red-600 font-bold">rojas</span>. Indican el final del verbo que cambia según la persona. En los tiempos compuestos, el participio no cambia (siempre es "cantado", "comido" o "vivido"), por eso lo que debes aprender es la terminación del verbo <b>haber</b> que lo acompaña.
+          </p>
         </div>
       </div>
     </div>

@@ -5,31 +5,25 @@ export enum Mood {
 }
 
 export enum Tense {
-  // Indicativo - Tiempos Simples
+  // Indicativo
   PRESENTE_IND = 'Presente',
-  PRET_IMPERFECTO_IND = 'Pretérito Imperfecto',
-  PRET_PERFECTO_SIMPLE_IND = 'Pretérito Perfecto Simple',
-  FUTURO_SIMPLE_IND = 'Futuro Simple',
-  CONDICIONAL_SIMPLE_IND = 'Condicional Simple',
+  PRET_PERF_COMP_IND = 'Pretérito Perfecto Compuesto',
+  PRET_IMP_IND = 'Pretérito Imperfecto',
+  PRET_PLUSC_IND = 'Pretérito Pluscuamperfecto',
+  PRET_PERF_SIMP_IND = 'Pretérito Perfecto Simple',
+  PRET_ANT_IND = 'Pretérito Anterior',
+  FUT_SIMP_IND = 'Futuro Simple',
+  FUT_PERF_IND = 'Futuro Perfecto',
+  COND_SIMP_IND = 'Condicional Simple',
+  COND_COMP_IND = 'Condicional Compuesto',
   
-  // Indicativo - Tiempos Compuestos
-  PRET_PERFECTO_COMP_IND = 'Pretérito Perfecto Compuesto',
-  PRET_PLUSCUAM_IND = 'Pretérito Pluscuamperfecto',
-  PRET_ANTERIOR_IND = 'Pretérito Anterior',
-  FUTURO_COMP_IND = 'Futuro Compuesto',
-  CONDICIONAL_COMP_IND = 'Condicional Perfecto',
-  
-  // Subjuntivo - Tiempos Simples
+  // Subjuntivo
   PRESENTE_SUBJ = 'Presente',
-  PRET_IMPERFECTO_SUBJ_1 = 'Pretérito Imperfecto (-ra)',
-  PRET_IMPERFECTO_SUBJ_2 = 'Pretérito Imperfecto (-se)',
-  FUTURO_SIMPLE_SUBJ = 'Futuro Simple',
-  
-  // Subjuntivo - Tiempos Compuestos
-  PRET_PERFECTO_SUBJ = 'Pretérito Perfecto',
-  PRET_PLUSCUAM_SUBJ_1 = 'Pretérito Pluscuamperfecto (-ra)',
-  PRET_PLUSCUAM_SUBJ_2 = 'Pretérito Pluscuamperfecto (-se)',
-  FUTURO_PERFECTO_SUBJ = 'Futuro Perfecto'
+  PRET_PERF_SUBJ = 'Pretérito Perfecto',
+  PRET_IMP_SUBJ_1 = 'Pretérito Imperfecto (-ra)',
+  PRET_IMP_SUBJ_2 = 'Pretérito Imperfecto (-ase)',
+  PRET_PLUSC_SUBJ_1 = 'Pretérito Pluscuamperfecto (-ra)',
+  PRET_PLUSC_SUBJ_2 = 'Pretérito Pluscuamperfecto (-ase)',
 }
 
 export enum Person {

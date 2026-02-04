@@ -1,28 +1,26 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { VerbData } from '../types.ts';
 
-interface OralPracticeProps {
-  verb: VerbData;
-  isGlobalFullscreen?: boolean;
-}
-
-function decode(base64: string) {
-  const binaryString = window.atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
+// Helper functions for audio encoding/decoding as per Gemini API guidelines
+function decodeBase64(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
 }
 
-function encode(bytes: Uint8Array) {
+function encodeBase64(bytes: Uint8Array) {
   let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return window.btoa(binary);
+  return btoa(binary);
 }
 
 async function decodeAudioData(
@@ -31,7 +29,7 @@ async function decodeAudioData(
   sampleRate: number,
   numChannels: number,
 ): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer, data.byteOffset, data.length / 2);
+  const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
 
@@ -44,61 +42,32 @@ async function decodeAudioData(
   return buffer;
 }
 
-const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen }) => {
-  const [isActive, setIsActive] = useState(false);
-  const [userTranscription, setUserTranscription] = useState('');
-  const [aiInstruction, setAiInstruction] = useState('Pulsa el botón para empezar el examen oral.');
-  const [requestedTense, setRequestedTense] = useState('');
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'listening' | 'speaking'>('idle');
-  
-  const sessionRef = useRef<any>(null);
-  const audioContextsRef = useRef<{ input: AudioContext; output: AudioContext; outputGain: GainNode } | null>(null);
-  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+const OralPractice: React.FC<{ verb: VerbData }> = ({ verb }) => {
+  const [status, setStatus] = useState<'idle' | 'active' | 'loading'>('idle');
+  const [instruction, setInstruction] = useState('Presiona el micrófono para iniciar el examen oral.');
+  const sessionPromiseRef = useRef<Promise<any> | null>(null);
+  const audioCtxRef = useRef<{ in: AudioContext; out: AudioContext } | null>(null);
   const nextStartTimeRef = useRef<number>(0);
+  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
 
-  const stopSession = () => {
-    if (sessionRef.current) {
-      try { sessionRef.current.close(); } catch(e) {}
-      sessionRef.current = null;
-    }
-    setIsActive(false);
-    setStatus('idle');
-    setAiInstruction('Examen terminado.');
-    setRequestedTense('');
-    setUserTranscription('');
-    
-    if (audioContextsRef.current) {
-      try { audioContextsRef.current.input.close(); } catch(e) {}
-      try { audioContextsRef.current.output.close(); } catch(e) {}
-      audioContextsRef.current = null;
-    }
-    
-    sourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
-    sourcesRef.current.clear();
+  const stopAudio = () => {
+    activeSourcesRef.current.forEach(source => {
+      try { source.stop(); } catch (e) {}
+    });
+    activeSourcesRef.current.clear();
     nextStartTimeRef.current = 0;
   };
 
-  const startSession = async () => {
-    setStatus('connecting');
-    setAiInstruction('Conectando con el Profe...');
-
+  const start = async () => {
+    setStatus('loading');
     const apiKey = (window as any).process?.env?.API_KEY || "";
-    if (!apiKey) {
-      setAiInstruction('Error: No se encontró la API KEY.');
-      setStatus('idle');
-      return;
-    }
-
     const ai = new GoogleGenAI({ apiKey });
-    const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-    const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    const outputGain = outputCtx.createGain();
-    outputGain.connect(outputCtx.destination);
-    
-    audioContextsRef.current = { input: inputCtx, output: outputCtx, outputGain };
-    
-    await inputCtx.resume();
-    await outputCtx.resume();
+
+    // Initialize Audio Contexts
+    const inCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+    const outCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    audioCtxRef.current = { in: inCtx, out: outCtx };
+    nextStartTimeRef.current = 0;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -107,142 +76,161 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
-            setStatus('listening');
-            const inCtx = audioContextsRef.current?.input;
-            if (!inCtx) return;
-
+            setStatus('active');
             const source = inCtx.createMediaStreamSource(stream);
-            const scriptProcessor = inCtx.createScriptProcessor(4096, 1, 1);
+            // Using ScriptProcessor as requested for simplicity in this environment
+            const processor = inCtx.createScriptProcessor(4096, 1, 1);
             
-            scriptProcessor.onaudioprocess = (e) => {
+            processor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
-              const int16 = new Int16Array(inputData.length);
-              for (let i = 0; i < inputData.length; i++) {
+              const l = inputData.length;
+              const int16 = new Int16Array(l);
+              for (let i = 0; i < l; i++) {
                 int16[i] = inputData[i] * 32768;
               }
-              const pcmBlob: Blob = {
-                data: encode(new Uint8Array(int16.buffer)),
-                mimeType: 'audio/pcm;rate=16000',
-              };
-              sessionPromise.then(s => s?.sendRealtimeInput({ media: pcmBlob }));
+              const b64Data = encodeBase64(new Uint8Array(int16.buffer));
+              
+              sessionPromise.then(session => {
+                session.sendRealtimeInput({ 
+                  media: { data: b64Data, mimeType: 'audio/pcm;rate=16000' } 
+                });
+              });
             };
             
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(inCtx.destination);
-
-            sessionPromise.then(s => {
-              const silentBuffer = new Int16Array(1600); 
-              s.sendRealtimeInput({ media: { data: encode(new Uint8Array(silentBuffer.buffer)), mimeType: 'audio/pcm;rate=16000' } });
-            });
+            source.connect(processor);
+            processor.connect(inCtx.destination);
           },
           onmessage: async (message: LiveServerMessage) => {
-            const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (base64Audio) {
-              const outCtx = audioContextsRef.current?.output;
-              const gain = audioContextsRef.current?.outputGain;
-              if (!outCtx || !gain) return;
-
-              setStatus('speaking');
-              
-              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outCtx.currentTime);
-              const audioBuffer = await decodeAudioData(decode(base64Audio), outCtx, 24000, 1);
-              const source = outCtx.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(gain);
-              
-              source.onended = () => {
-                sourcesRef.current.delete(source);
-                if (sourcesRef.current.size === 0) setStatus('listening');
-              };
-
-              source.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += audioBuffer.duration;
-              sourcesRef.current.add(source);
-            }
-
-            if (message.serverContent?.outputAudioTranscription) {
-              setAiInstruction(message.serverContent.outputAudioTranscription.text);
+            // Handle Transcription
+            if (message.serverContent?.outputTranscription) {
+               // Optional: accumulate or stream transcription text
             }
             
-            if (message.serverContent?.inputAudioTranscription) {
-              setUserTranscription(message.serverContent.inputAudioTranscription.text);
+            if (message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data) {
+              const base64Audio = message.serverContent.modelTurn.parts[0].inlineData.data;
+              const outCtx = audioCtxRef.current?.out;
+              
+              if (outCtx) {
+                // Schedule gapless playback
+                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outCtx.currentTime);
+                
+                const audioBuffer = await decodeAudioData(
+                  decodeBase64(base64Audio),
+                  outCtx,
+                  24000,
+                  1
+                );
+                
+                const source = outCtx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(outCtx.destination);
+                
+                source.onended = () => {
+                  activeSourcesRef.current.delete(source);
+                };
+                
+                activeSourcesRef.current.add(source);
+                source.start(nextStartTimeRef.current);
+                nextStartTimeRef.current += audioBuffer.duration;
+              }
             }
 
+            // Handle Interruption
             if (message.serverContent?.interrupted) {
-              sourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
-              sourcesRef.current.clear();
-              nextStartTimeRef.current = 0;
-              setStatus('listening');
+              stopAudio();
             }
           },
-          onclose: () => stopSession(),
-          onerror: (e) => stopSession(),
+          onerror: (e) => {
+            console.error("Live API Error:", e);
+            setStatus('idle');
+            setInstruction('Error en la conexión. Inténtalo de nuevo.');
+          },
+          onclose: () => {
+            setStatus('idle');
+          }
         },
         config: {
           responseModalities: [Modality.AUDIO],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          systemInstruction: `ERES EL 'PROFE CONJUGACIÓN'. 
-          TU MISIÓN: Evaluar la conjugación del verbo ${verb.infinitive} en modo subjuntivo.
-          INICIO: Saluda y pide un tiempo específico del subjuntivo para ${verb.infinitive}.
-          FEEDBACK: Sé positivo pero exigente. Si el alumno falla, corrígele con cariño.
-          ESTILO: Profesor de España, apasionado por la gramática.`,
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
+          systemInstruction: `Eres un profesor amable y paciente experto en gramática española. Tu objetivo es examinar oralmente al alumno sobre el verbo "${verb.infinitive}" en modo subjuntivo. 
+          Instrucciones:
+          1. Saluda y pide al alumno que conjugue una forma específica (persona + tiempo) del verbo ${verb.infinitive} en subjuntivo.
+          2. Escucha su respuesta.
+          3. Si es correcta, felicítale y pide otra.
+          4. Si es incorrecta, corrígele con cariño y explícale por qué.
+          Sé breve en tus intervenciones para que el flujo sea ágil.`,
+          speechConfig: { 
+            voiceConfig: { 
+              prebuiltVoiceConfig: { voiceName: 'Puck' } 
+            } 
           }
         }
       });
 
-      sessionRef.current = await sessionPromise;
-      setIsActive(true);
-    } catch (err) {
-      console.error("Mic error:", err);
+      sessionPromiseRef.current = sessionPromise;
+
+    } catch (e) {
+      console.error("Startup Error:", e);
       setStatus('idle');
-      setAiInstruction('Permiso de micrófono denegado o error de conexión.');
+      setInstruction('No se pudo acceder al micrófono o iniciar la sesión.');
     }
   };
 
+  const stop = () => {
+    sessionPromiseRef.current?.then(s => s.close());
+    stopAudio();
+    if (audioCtxRef.current) {
+      audioCtxRef.current.in.close();
+      audioCtxRef.current.out.close();
+    }
+    setStatus('idle');
+    setInstruction('Sesión finalizada. ¡Buen trabajo!');
+  };
+
   return (
-    <div className={`flex flex-col h-full w-full transition-all duration-700 ${isGlobalFullscreen ? 'bg-slate-900 justify-center items-center p-12' : 'bg-white rounded-[3rem] border-2 border-indigo-100 shadow-2xl p-8'}`}>
-      <div className="w-full max-w-5xl flex items-center justify-between mb-8">
-        <div className="flex items-center space-x-4">
-          <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl relative">
-            {status === 'speaking' && <div className="absolute inset-0 bg-white/20 animate-ping rounded-2xl"></div>}
-            <i className="fas fa-microphone-lines text-2xl"></i>
-          </div>
-          <div>
-            <h2 className={`font-black tracking-tight ${isGlobalFullscreen ? 'text-white text-3xl' : 'text-slate-900 text-xl'}`}>EXAMEN ORAL</h2>
-            <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">Verbo: {verb.infinitive}</p>
-          </div>
+    <div className="flex flex-col items-center justify-center space-y-12 py-10">
+      <div className={`p-10 rounded-[3rem] text-center max-w-2xl transition-all shadow-2xl border-4 ${status === 'active' ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-white text-slate-700 border-slate-100'}`}>
+        <div className="mb-4">
+          <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${status === 'active' ? 'bg-white/20' : 'bg-slate-100'}`}>
+            Examen en Vivo: {verb.infinitive.toUpperCase()}
+          </span>
         </div>
+        <p className="text-2xl font-lexend italic leading-relaxed">"{instruction}"</p>
       </div>
 
-      <div className="flex-1 w-full flex flex-col items-center justify-center space-y-12">
-        <div className={`w-full max-w-4xl p-10 rounded-[3rem] text-center transition-all ${status === 'speaking' ? 'bg-indigo-600 text-white shadow-2xl shadow-indigo-500/20' : 'bg-slate-50 text-slate-700 border-2 border-slate-100'}`}>
-          <p className="text-3xl md:text-5xl font-lexend italic leading-tight">
-            "{aiInstruction}"
-          </p>
-        </div>
-
-        <button
-          onClick={isActive ? stopSession : startSession}
-          className={`group relative w-64 h-64 rounded-full flex flex-col items-center justify-center transition-all transform active:scale-90 shadow-2xl ${isActive ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+      <div className="relative">
+        {status === 'active' && (
+          <div className="absolute inset-0 -m-4">
+            <div className="w-full h-full rounded-full bg-indigo-500/20 animate-ping"></div>
+          </div>
+        )}
+        <button 
+          onClick={status === 'active' ? stop : start}
+          disabled={status === 'loading'}
+          className={`relative w-48 h-48 rounded-full shadow-2xl transition-all flex items-center justify-center transform hover:scale-105 active:scale-95 z-10 ${status === 'active' ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
         >
-          {status === 'connecting' ? (
-             <i className="fas fa-spinner fa-spin text-6xl"></i>
+          {status === 'loading' ? (
+            <i className="fas fa-circle-notch fa-spin text-5xl"></i>
           ) : (
-            <>
-              <i className={`fas ${isActive ? 'fa-stop' : 'fa-microphone'} text-5xl mb-4`}></i>
-              <span className="font-lexend font-black uppercase tracking-widest text-xs">{isActive ? 'Terminar' : 'Empezar'}</span>
-            </>
+            <i className={`fas ${status === 'active' ? 'fa-stop' : 'fa-microphone'} text-5xl text-white`}></i>
           )}
-          {isActive && <div className="absolute inset-[-10px] border-2 border-indigo-400/30 rounded-full animate-ping"></div>}
         </button>
+      </div>
 
-        <div className={`w-full max-w-2xl text-center py-6 px-8 rounded-3xl border-2 border-dashed border-slate-200 ${isActive ? 'opacity-100' : 'opacity-30'}`}>
-          <p className="text-slate-400 font-lexend text-sm mb-2 uppercase tracking-widest">Lo que escucho:</p>
-          <p className="text-indigo-600 font-bold text-xl italic">{userTranscription || '...'}</p>
-        </div>
+      <div className="text-center space-y-2">
+        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
+          {status === 'active' ? 'EL PROFESOR TE ESCUCHA...' : 'PULSA PARA HABLAR'}
+        </p>
+        {status === 'active' && (
+          <div className="flex justify-center space-x-1">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div 
+                key={i} 
+                className="w-1 bg-indigo-400 rounded-full animate-bounce" 
+                style={{ height: `${Math.random() * 20 + 10}px`, animationDelay: `${i * 0.1}s` }}
+              ></div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

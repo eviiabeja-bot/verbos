@@ -1,6 +1,6 @@
 {
   "name": "Subjuntivo Master",
-  "description": "Una aplicación educativa avanzada diseñada para ayudar a los estudiantes a dominar el modo subjuntivo en español mediante tablas de conjugación interactivas, cuestionarios de práctica y un tutor de IA especializado.",
+  "description": "Domina el subjuntivo con IA: Tablas, ejercicios escritos y tutor de voz en tiempo real.",
   "requestFramePermissions": [
     "microphone"
   ]
