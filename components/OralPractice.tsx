@@ -80,12 +80,11 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
 
   const startSession = async () => {
     setStatus('connecting');
-    setAiInstruction('Iniciando tutor de voz...');
+    setAiInstruction('Conectando con el Profe...');
 
-    // Verificación segura de API KEY
-    const apiKey = (globalThis as any).process?.env?.API_KEY || '';
+    const apiKey = (window as any).process?.env?.API_KEY || "";
     if (!apiKey) {
-      setAiInstruction('Error: API KEY no configurada en el entorno.');
+      setAiInstruction('Error: No se encontró la API KEY.');
       setStatus('idle');
       return;
     }
@@ -131,7 +130,6 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
             source.connect(scriptProcessor);
             scriptProcessor.connect(inCtx.destination);
 
-            // Trigger initial greeting
             sessionPromise.then(s => {
               const silentBuffer = new Int16Array(1600); 
               s.sendRealtimeInput({ media: { data: encode(new Uint8Array(silentBuffer.buffer)), mimeType: 'audio/pcm;rate=16000' } });
@@ -163,10 +161,7 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
             }
 
             if (message.serverContent?.outputAudioTranscription) {
-              const text = message.serverContent.outputAudioTranscription.text;
-              setAiInstruction(text);
-              const tenseMatch = text.match(/(Presente|Pretérito|Futuro|Condicional)[^.?!]*/i);
-              if (tenseMatch) setRequestedTense(tenseMatch[0]);
+              setAiInstruction(message.serverContent.outputAudioTranscription.text);
             }
             
             if (message.serverContent?.inputAudioTranscription) {
@@ -181,20 +176,17 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
             }
           },
           onclose: () => stopSession(),
-          onerror: (e) => {
-            console.error("Error Live:", e);
-            stopSession();
-          },
+          onerror: (e) => stopSession(),
         },
         config: {
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           systemInstruction: `ERES EL 'PROFE CONJUGACIÓN'. 
-          REGLA DE ORO: NADA MÁS CONECTAR, di inmediatamente: "¡Hola! Vamos a examinar el verbo ${verb.infinitive}. Dime el [TIEMPO VERBAL]" (ej. Presente de Subjuntivo).
-          PERSONAS: Usa exclusivamente yo, tú, él, nosotros, vosotros, ellos.
-          ACENTOS: No los tengas en cuenta. Si el alumno no pronuncia bien las tildes, dalo por bueno. 
-          ESTILO: Eres un profesor de España, enérgico y motivador. Si el alumno se queda callado, anímale.`,
+          TU MISIÓN: Evaluar la conjugación del verbo ${verb.infinitive} en modo subjuntivo.
+          INICIO: Saluda y pide un tiempo específico del subjuntivo para ${verb.infinitive}.
+          FEEDBACK: Sé positivo pero exigente. Si el alumno falla, corrígele con cariño.
+          ESTILO: Profesor de España, apasionado por la gramática.`,
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
           }
@@ -206,88 +198,50 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
     } catch (err) {
       console.error("Mic error:", err);
       setStatus('idle');
-      setAiInstruction('Comprueba el micro y los permisos del navegador.');
+      setAiInstruction('Permiso de micrófono denegado o error de conexión.');
     }
   };
 
-  useEffect(() => {
-    return () => stopSession();
-  }, []);
-
   return (
-    <div className={`flex flex-col h-full w-full transition-all duration-700 ${isGlobalFullscreen ? 'bg-slate-900 justify-center items-center' : 'bg-white rounded-[3rem] border-2 border-indigo-100 shadow-2xl p-8'}`}>
-      {status === 'speaking' && (
-        <div className="fixed inset-0 pointer-events-none flex items-center justify-center opacity-10">
-           <div className="w-full h-full bg-indigo-500 animate-pulse rounded-full blur-[100px]"></div>
-        </div>
-      )}
-      <div className={`w-full max-w-5xl flex items-center justify-between mb-8 z-10 ${isGlobalFullscreen ? 'px-12' : ''}`}>
+    <div className={`flex flex-col h-full w-full transition-all duration-700 ${isGlobalFullscreen ? 'bg-slate-900 justify-center items-center p-12' : 'bg-white rounded-[3rem] border-2 border-indigo-100 shadow-2xl p-8'}`}>
+      <div className="w-full max-w-5xl flex items-center justify-between mb-8">
         <div className="flex items-center space-x-4">
-          <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl relative overflow-hidden">
-             {status === 'speaking' && <div className="absolute inset-0 bg-white/20 animate-ping"></div>}
+          <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl relative">
+            {status === 'speaking' && <div className="absolute inset-0 bg-white/20 animate-ping rounded-2xl"></div>}
             <i className="fas fa-microphone-lines text-2xl"></i>
           </div>
           <div>
             <h2 className={`font-black tracking-tight ${isGlobalFullscreen ? 'text-white text-3xl' : 'text-slate-900 text-xl'}`}>EXAMEN ORAL</h2>
-            <p className={`text-[10px] font-black uppercase tracking-widest ${isGlobalFullscreen ? 'text-indigo-400' : 'text-indigo-600'}`}>Verbo: {verb.infinitive}</p>
+            <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">Verbo: {verb.infinitive}</p>
           </div>
         </div>
-        {requestedTense && (
-          <div className="bg-indigo-500 text-white px-8 py-3 rounded-full font-black text-xs uppercase tracking-[0.2em] shadow-2xl border-2 border-indigo-300 animate-bounce">
-             TIEMPO: {requestedTense}
-          </div>
-        )}
       </div>
-      <div className="flex-1 w-full max-w-6xl flex flex-col items-center justify-center space-y-12 py-6 z-10">
-        <div className="w-full text-center px-4">
-          <div className={`transition-all duration-700 p-12 md:p-20 rounded-[4rem] min-h-[300px] flex items-center justify-center ${
-            status === 'speaking' 
-              ? (isGlobalFullscreen ? 'bg-indigo-600 text-white shadow-[0_0_150px_rgba(79,70,229,0.4)]' : 'bg-indigo-600 text-white shadow-2xl') 
-              : (isGlobalFullscreen ? 'bg-slate-800/80 text-slate-300 border-2 border-slate-700' : 'bg-slate-50 text-slate-700 border-2 border-slate-100')
-          }`}>
-            <h2 className={`font-serif italic leading-tight text-center ${isGlobalFullscreen ? 'text-5xl md:text-8xl' : 'text-3xl md:text-6xl'}`}>
-              "{aiInstruction}"
-            </h2>
-          </div>
+
+      <div className="flex-1 w-full flex flex-col items-center justify-center space-y-12">
+        <div className={`w-full max-w-4xl p-10 rounded-[3rem] text-center transition-all ${status === 'speaking' ? 'bg-indigo-600 text-white shadow-2xl shadow-indigo-500/20' : 'bg-slate-50 text-slate-700 border-2 border-slate-100'}`}>
+          <p className="text-3xl md:text-5xl font-lexend italic leading-tight">
+            "{aiInstruction}"
+          </p>
         </div>
+
         <button
           onClick={isActive ? stopSession : startSession}
-          className={`group relative w-72 h-72 rounded-full flex flex-col items-center justify-center transition-all transform active:scale-90 shadow-2xl ${
-            isActive 
-              ? 'bg-red-500 text-white shadow-red-500/40 hover:bg-red-600' 
-              : 'bg-indigo-600 text-white shadow-indigo-600/40 hover:scale-105 hover:bg-indigo-700'
-          }`}
+          className={`group relative w-64 h-64 rounded-full flex flex-col items-center justify-center transition-all transform active:scale-90 shadow-2xl ${isActive ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
         >
           {status === 'connecting' ? (
-            <div className="flex flex-col items-center">
-              <i className="fas fa-spinner fa-spin text-7xl mb-4"></i>
-              <span className="text-[10px] font-black uppercase tracking-widest">Iniciando...</span>
-            </div>
-          ) : isActive ? (
-            <>
-              <div className="w-20 h-20 bg-white/20 rounded-[2.5rem] flex items-center justify-center mb-4 backdrop-blur-md">
-                <i className="fas fa-microphone-slash text-4xl"></i>
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-[0.5em]">Parar</span>
-            </>
+             <i className="fas fa-spinner fa-spin text-6xl"></i>
           ) : (
             <>
-              <div className="w-20 h-20 bg-white/20 rounded-[2.5rem] flex items-center justify-center mb-4 backdrop-blur-md">
-                <i className="fas fa-microphone text-4xl"></i>
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-[0.5em]">Empezar</span>
+              <i className={`fas ${isActive ? 'fa-stop' : 'fa-microphone'} text-5xl mb-4`}></i>
+              <span className="font-lexend font-black uppercase tracking-widest text-xs">{isActive ? 'Terminar' : 'Empezar'}</span>
             </>
           )}
-          {isActive && (
-            <div className="absolute inset-[-15px] rounded-full border-2 border-indigo-500/30 animate-ping"></div>
-          )}
+          {isActive && <div className="absolute inset-[-10px] border-2 border-indigo-400/30 rounded-full animate-ping"></div>}
         </button>
-        <div className={`w-full max-w-2xl text-center transition-all duration-500 ${isActive ? 'opacity-100' : 'opacity-0'}`}>
-          <div className={`p-8 rounded-[3rem] min-h-[140px] flex items-center justify-center border-2 border-dashed ${isGlobalFullscreen ? 'bg-slate-800/40 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
-             <p className={`italic font-medium text-center ${isGlobalFullscreen ? 'text-slate-400 text-4xl' : 'text-slate-500 text-2xl'}`}>
-               {userTranscription ? `"${userTranscription}..."` : "Dime la conjugación..."}
-             </p>
-          </div>
+
+        <div className={`w-full max-w-2xl text-center py-6 px-8 rounded-3xl border-2 border-dashed border-slate-200 ${isActive ? 'opacity-100' : 'opacity-30'}`}>
+          <p className="text-slate-400 font-lexend text-sm mb-2 uppercase tracking-widest">Lo que escucho:</p>
+          <p className="text-indigo-600 font-bold text-xl italic">{userTranscription || '...'}</p>
         </div>
       </div>
     </div>
