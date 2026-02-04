@@ -1,11 +1,11 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ChatMessage } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { ChatMessage } from "../types.ts";
 
 export async function askTutor(history: ChatMessage[], prompt: string) {
   try {
+    const apiKey = (globalThis as any).process?.env?.API_KEY || "";
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: [
@@ -31,6 +31,8 @@ export async function askTutor(history: ChatMessage[], prompt: string) {
 
 export async function generateQuizQuestions(verb: string) {
   try {
+    const apiKey = (globalThis as any).process?.env?.API_KEY || "";
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Genera 5 frases de práctica para los tiempos del Indicativo y Subjuntivo usando el verbo '${verb}'.

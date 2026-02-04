@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Person, Tense, VerbData, Mood } from '../types';
+import { Person, Tense, VerbData, Mood } from '../types.ts';
 
 interface VerbTableProps {
   verb: VerbData;
@@ -19,7 +19,6 @@ const VerbTable: React.FC<VerbTableProps> = ({ verb }) => {
   }, [activeMood, verb]);
 
   const highlightEnding = (word: string) => {
-    // Terminaciones y auxiliares para resaltar en rojo (compuestos y simples)
     const endings = [
       'o', 'as', 'a', 'amos', 'áis', 'an', 
       'es', 'e', 'emos', 'éis', 'en',
@@ -41,7 +40,6 @@ const VerbTable: React.FC<VerbTableProps> = ({ verb }) => {
       'hubiese', 'hubieses', 'hubiésemos', 'hubieseis', 'hubiesen'
     ].sort((a, b) => b.length - a.length);
 
-    // Si es un tiempo compuesto, resaltamos el auxiliar entero y el participio
     if (word.includes(' ')) {
       const parts = word.split(' ');
       return (
@@ -67,7 +65,6 @@ const VerbTable: React.FC<VerbTableProps> = ({ verb }) => {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Selector de Modo */}
       <div className="flex bg-slate-200 p-1.5 rounded-2xl w-full max-w-lg mx-auto shadow-inner">
         {Object.values(Mood).map((m) => (
           <button
@@ -85,7 +82,6 @@ const VerbTable: React.FC<VerbTableProps> = ({ verb }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Lista de tiempos verbales (Botones) */}
         <div className="lg:col-span-4 space-y-2 max-h-[600px] overflow-y-auto pr-2 no-scrollbar">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">Selecciona un tiempo verbal</p>
           <div className="flex flex-col gap-2">
@@ -108,7 +104,6 @@ const VerbTable: React.FC<VerbTableProps> = ({ verb }) => {
           </div>
         </div>
 
-        {/* Visualización Grande de la Conjugación */}
         <div className="lg:col-span-8">
           {activeTense && (
             <div className="bg-white rounded-[2rem] border-2 border-indigo-100 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">

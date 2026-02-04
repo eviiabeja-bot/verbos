@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { generateQuizQuestions } from '../services/gemini';
-import { VerbData } from '../types';
+import { generateQuizQuestions } from '../services/gemini.ts';
+import { VerbData } from '../types.ts';
 
 interface QuizProps {
   verb: VerbData;
@@ -60,7 +60,7 @@ const Quiz: React.FC<QuizProps> = ({ verb }) => {
     return (
       <div className="flex flex-col items-center justify-center h-64 space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-        <p className="text-slate-500 font-medium">Preparando ejercicios sin acentos...</p>
+        <p className="text-slate-500 font-medium">Preparando ejercicios...</p>
       </div>
     );
   }
