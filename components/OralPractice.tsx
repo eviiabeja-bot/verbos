@@ -8,11 +8,12 @@ interface OralPracticeProps {
   isGlobalFullscreen?: boolean;
 }
 
-// Implementación robusta de manual de codificación/decodificación
+// Funciones de utilidad para audio (Base64 <-> Uint8Array)
 function decode(base64: string) {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
@@ -20,10 +21,11 @@ function decode(base64: string) {
 
 function encode(bytes: Uint8Array) {
   let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
+  return window.btoa(binary);
 }
 
 async function decodeAudioData(
@@ -32,7 +34,7 @@ async function decodeAudioData(
   sampleRate: number,
   numChannels: number,
 ): Promise<AudioBuffer> {
-  // Corregimos la interpretación del buffer para evitar ruidos o silencios
+  // Aseguramos la correcta interpretación del buffer de 16 bits
   const dataInt16 = new Int16Array(data.buffer, data.byteOffset, data.length / 2);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
@@ -49,7 +51,7 @@ async function decodeAudioData(
 const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen }) => {
   const [isActive, setIsActive] = useState(false);
   const [userTranscription, setUserTranscription] = useState('');
-  const [aiInstruction, setAiInstruction] = useState('Pulsa "Empezar" para el examen oral.');
+  const [aiInstruction, setAiInstruction] = useState('Pulsa el botón para empezar el examen oral.');
   const [requestedTense, setRequestedTense] = useState('');
   const [status, setStatus] = useState<'idle' | 'connecting' | 'listening' | 'speaking'>('idle');
   
@@ -82,11 +84,11 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
 
   const startSession = async () => {
     setStatus('connecting');
-    setAiInstruction('Conectando con el Profe...');
+    setAiInstruction('Llamando al Profe...');
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Inicialización inmediata de contextos de audio para evitar bloqueos del navegador
+    // Inicialización de contextos de audio
     const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     const outputGain = outputCtx.createGain();
@@ -125,10 +127,10 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
             source.connect(scriptProcessor);
             scriptProcessor.connect(inCtx.destination);
 
-            // GOLPE DE INICIO: Enviamos una señal de "presencia" para que el Profe empiece a hablar YA
+            // GOLPE DE INICIO: Audio "despertador" para que hable al instante
             sessionPromise.then(s => {
-              const startSignal = new Int16Array(1600); // 100ms de silencio/señal
-              s.sendRealtimeInput({ media: { data: encode(new Uint8Array(startSignal.buffer)), mimeType: 'audio/pcm;rate=16000' } });
+              const silentBuffer = new Int16Array(1600); 
+              s.sendRealtimeInput({ media: { data: encode(new Uint8Array(silentBuffer.buffer)), mimeType: 'audio/pcm;rate=16000' } });
             });
           },
           onmessage: async (message: LiveServerMessage) => {
@@ -154,7 +156,7 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
               sourcesRef.current.add(source);
             }
 
-            // Actualizar texto en pantalla
+            // Transcripciones
             if (message.serverContent?.outputAudioTranscription) {
               const text = message.serverContent.outputAudioTranscription.text;
               setAiInstruction(text);
@@ -184,7 +186,7 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           systemInstruction: `ERES EL 'PROFE CONJUGACIÓN'. 
-          REGLA DE ORO: No esperes nada. NADA MÁS CONECTAR, di inmediatamente: "¡Hola! Vamos a examinar el verbo ${verb.infinitive}. Dime el [TIEMPO VERBAL]" (ej. Presente de Subjuntivo).
+          REGLA DE ORO: NADA MÁS CONECTAR, di inmediatamente: "¡Hola! Vamos a examinar el verbo ${verb.infinitive}. Dime el [TIEMPO VERBAL]" (ej. Presente de Subjuntivo).
           PERSONAS: Usa exclusivamente yo, tú, él, nosotros, vosotros, ellos.
           ACENTOS: No los tengas en cuenta. Si el alumno no pronuncia bien las tildes, dalo por bueno. 
           ESTILO: Eres un profesor de España, enérgico y motivador. Si el alumno se queda callado, anímale.`,
@@ -199,7 +201,7 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
     } catch (err) {
       console.error("Mic error:", err);
       setStatus('idle');
-      setAiInstruction('Revisa los permisos del micrófono.');
+      setAiInstruction('Error: No se pudo conectar. Comprueba el micro.');
     }
   };
 
@@ -210,35 +212,35 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
   return (
     <div className={`flex flex-col h-full w-full transition-all duration-700 ${isGlobalFullscreen ? 'bg-slate-900 justify-center items-center' : 'bg-white rounded-[3rem] border-2 border-indigo-100 shadow-2xl p-8'}`}>
       
-      {/* Animación de ondas solo cuando el profe habla */}
       {status === 'speaking' && (
         <div className="fixed inset-0 pointer-events-none flex items-center justify-center opacity-10">
-           <div className="w-full h-full bg-indigo-500 animate-pulse rounded-full blur-[120px]"></div>
+           <div className="w-full h-full bg-indigo-500 animate-pulse rounded-full blur-[100px]"></div>
         </div>
       )}
 
       {/* Header Info */}
       <div className={`w-full max-w-5xl flex items-center justify-between mb-8 z-10 ${isGlobalFullscreen ? 'px-12' : ''}`}>
         <div className="flex items-center space-x-4">
-          <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl">
-            <i className={`fas ${status === 'speaking' ? 'fa-volume-high animate-bounce' : 'fa-microphone'} text-2xl`}></i>
+          <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl relative overflow-hidden">
+             {status === 'speaking' && <div className="absolute inset-0 bg-white/20 animate-ping"></div>}
+            <i className="fas fa-microphone-lines text-2xl"></i>
           </div>
           <div>
-            <h2 className={`font-black tracking-tight ${isGlobalFullscreen ? 'text-white text-3xl' : 'text-slate-900 text-xl'}`}>EXAMEN EN VIVO</h2>
+            <h2 className={`font-black tracking-tight ${isGlobalFullscreen ? 'text-white text-3xl' : 'text-slate-900 text-xl'}`}>EXAMEN ORAL</h2>
             <p className={`text-[10px] font-black uppercase tracking-widest ${isGlobalFullscreen ? 'text-indigo-400' : 'text-indigo-600'}`}>Verbo: {verb.infinitive}</p>
           </div>
         </div>
         
         {requestedTense && (
-          <div className="bg-amber-400 text-amber-950 px-8 py-3 rounded-full font-black text-xs uppercase tracking-[0.2em] shadow-2xl border-2 border-amber-300 animate-pulse">
-             DIME EL: {requestedTense}
+          <div className="bg-indigo-500 text-white px-8 py-3 rounded-full font-black text-xs uppercase tracking-[0.2em] shadow-2xl border-2 border-indigo-300 animate-bounce">
+             TIEMPO: {requestedTense}
           </div>
         )}
       </div>
 
       <div className="flex-1 w-full max-w-6xl flex flex-col items-center justify-center space-y-12 py-6 z-10">
         
-        {/* INSTRUCCIÓN VISUAL DEL PROFE */}
+        {/* INSTRUCCIÓN VISUAL */}
         <div className="w-full text-center px-4">
           <div className={`transition-all duration-700 p-12 md:p-20 rounded-[4rem] min-h-[300px] flex items-center justify-center ${
             status === 'speaking' 
@@ -262,27 +264,27 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
         >
           {status === 'connecting' ? (
             <div className="flex flex-col items-center">
-              <i className="fas fa-circle-notch fa-spin text-7xl mb-4"></i>
-              <span className="text-[10px] font-black uppercase tracking-widest">Llamando...</span>
+              <i className="fas fa-spinner fa-spin text-7xl mb-4"></i>
+              <span className="text-[10px] font-black uppercase tracking-widest">Iniciando...</span>
             </div>
           ) : isActive ? (
             <>
               <div className="w-20 h-20 bg-white/20 rounded-[2.5rem] flex items-center justify-center mb-4 backdrop-blur-md">
-                <i className="fas fa-stop text-4xl"></i>
+                <i className="fas fa-microphone-slash text-4xl"></i>
               </div>
-              <span className="text-[10px] font-black uppercase tracking-[0.5em]">Detener</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.5em]">Parar</span>
             </>
           ) : (
             <>
               <div className="w-20 h-20 bg-white/20 rounded-[2.5rem] flex items-center justify-center mb-4 backdrop-blur-md">
-                <i className="fas fa-play text-4xl translate-x-1"></i>
+                <i className="fas fa-microphone text-4xl"></i>
               </div>
               <span className="text-[10px] font-black uppercase tracking-[0.5em]">Empezar</span>
             </>
           )}
           
           {isActive && (
-            <div className="absolute inset-[-20px] rounded-full border-4 border-indigo-500/20 animate-ping"></div>
+            <div className="absolute inset-[-15px] rounded-full border-2 border-indigo-500/30 animate-ping"></div>
           )}
         </button>
 
@@ -290,7 +292,7 @@ const OralPractice: React.FC<OralPracticeProps> = ({ verb, isGlobalFullscreen })
         <div className={`w-full max-w-2xl text-center transition-all duration-500 ${isActive ? 'opacity-100' : 'opacity-0'}`}>
           <div className={`p-8 rounded-[3rem] min-h-[140px] flex items-center justify-center border-2 border-dashed ${isGlobalFullscreen ? 'bg-slate-800/40 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
              <p className={`italic font-medium text-center ${isGlobalFullscreen ? 'text-slate-400 text-4xl' : 'text-slate-500 text-2xl'}`}>
-               {userTranscription ? `"${userTranscription}..."` : "Dile la respuesta al Profe..."}
+               {userTranscription ? `"${userTranscription}..."` : "Dime la conjugación..."}
              </p>
           </div>
         </div>
